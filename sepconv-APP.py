@@ -303,6 +303,8 @@ def del_files(path):
 
 if __name__ == '__main__':
     print('----------sepconv-APP '+__VERDION__+'----------\n')
+    if not os.path.exists(os.path.join(os.getcwd(),'temp')):
+        os.makedirs(os.path.join(os.getcwd(),'temp'))
     f = input('请输入要补帧的视频的路径：')
     fps = getFrameRate(f)
     print('这个视频的帧率是'+str(fps)+'fps\n')
