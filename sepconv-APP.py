@@ -22,7 +22,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.1'
+__VERSION__ = 'beta0.2'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -296,20 +296,17 @@ def getFrameRate(target):
     fps = int(vs['r_frame_rate'].split('/')[0])/int(vs['r_frame_rate'].split('/')[1])
     return fps
 
-def del_files(path):
-    ls = os.listdir(path)
-    for i in ls:
-        os.remove(os.path.join(path,i))
-
 if __name__ == '__main__':
-    print('----------sepconv-APP '+__VERDION__+'----------\n')
-    if not os.path.exists(os.path.join(os.getcwd(),'temp')):
-        os.makedirs(os.path.join(os.getcwd(),'temp'))
+    print('----------sepconv-APP '+__VERSION__+'----------\n')
     f = input('请输入要补帧的视频的路径：')
     fps = getFrameRate(f)
     print('这个视频的帧率是'+str(fps)+'fps\n')
     
     output_path = input('请输入输出文件夹的路径：')
+    original_frames_path = os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames')
+    interpolated_frames_path = os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames')
+    output_videos_path = os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'output_videos')
+    
     os.makedirs(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames'))
     print('')
     
@@ -327,30 +324,32 @@ if __name__ == '__main__':
 
     target_fps = 0
     
-    add_type = input('请输入要补帧的倍数(1:2x,2:4x)：')
+    add_type = input('请输入要补帧的倍数(1:2x,2:4x,3:8x)：')
     if add_type == '1':
         target_fps = fps*2
     elif add_type == '2':
         target_fps = fps*4
+    elif add_type == '3':
+        target_fps = fps*8
         
     print('输出帧率将是'+str(target_fps)+'fps\n')
     
     print('正在提取视频帧...')
-    os.system('ffmpeg -i '+f+' '+os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames','%09d.png'))
+    os.system('ffmpeg -i '+f+' '+os.path.join(original_frames_path,'%09d.png'))
     print('提取完毕\n')
 
-    frame_num = len([lists for lists in os.listdir(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames')) if os.path.isfile(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames',lists))])
+    frame_num = len([lists for lists in os.listdir(original_frames_path) if os.path.isfile(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames',lists))])
     print('一共有'+str(frame_num)+'帧需要处理\n')
 
     print('开始处理...\n')
 
-    os.makedirs(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames'))
-    output_frame_counter = 1
-    shutil.copyfile(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames',str(1).zfill(9)+'.png'),os.path.join(os.getcwd(),'temp','1.png'))
+    os.makedirs(interpolated_frames_path)
+    shutil.copyfile(os.path.join(original_frames_path,str(1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(1).zfill(9)+'.png'))
 
     t1 = 0
     t2 = 0
     t_all = 0
+    output_frame_counter = 1
     
     for i in range(1,frame_num):
         if t1 == 0:
@@ -358,46 +357,53 @@ if __name__ == '__main__':
         else:
             print('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间'+str(round(t_all/(i-1)*(frame_num-i),1))+'s')
             
-        if add_type == '1': #x2
+        if add_type == '1': #2x
             t1 = time.time()
-            shutil.copyfile(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames',str(i+1).zfill(9)+'.png'),os.path.join(os.getcwd(),'temp','3.png'))
-            genrate(os.path.join(os.getcwd(),'temp','1.png'),os.path.join(os.getcwd(),'temp','3.png'),os.path.join(os.getcwd(),'temp','2.png'))
-            shutil.move(os.path.join(os.getcwd(),'temp','1.png'),os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames',str(output_frame_counter).zfill(9)+'.png'))
-            shutil.move(os.path.join(os.getcwd(),'temp','2.png'),os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames',str(output_frame_counter+1).zfill(9)+'.png'))
-            shutil.move(os.path.join(os.getcwd(),'temp','3.png'),os.path.join(os.getcwd(),'temp','1.png'))
+            shutil.copyfile(os.path.join(original_frames_path,str(i+1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+1).zfill(9)+'.png'))
             output_frame_counter = output_frame_counter+2
             t2 = time.time()
-        elif add_type == '2': #x4
+        elif add_type == '2': #4x
             t1 = time.time()
-            shutil.copyfile(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames',str(i+1).zfill(9)+'.png'),os.path.join(os.getcwd(),'temp','5.png'))
-            genrate(os.path.join(os.getcwd(),'temp','1.png'),os.path.join(os.getcwd(),'temp','5.png'),os.path.join(os.getcwd(),'temp','3.png'))
-            genrate(os.path.join(os.getcwd(),'temp','1.png'),os.path.join(os.getcwd(),'temp','3.png'),os.path.join(os.getcwd(),'temp','2.png'))
-            genrate(os.path.join(os.getcwd(),'temp','3.png'),os.path.join(os.getcwd(),'temp','5.png'),os.path.join(os.getcwd(),'temp','4.png'))
-            shutil.move(os.path.join(os.getcwd(),'temp','1.png'),os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames',str(output_frame_counter).zfill(9)+'.png'))
-            shutil.move(os.path.join(os.getcwd(),'temp','2.png'),os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames',str(output_frame_counter+1).zfill(9)+'.png'))
-            shutil.move(os.path.join(os.getcwd(),'temp','3.png'),os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames',str(output_frame_counter+2).zfill(9)+'.png'))
-            shutil.move(os.path.join(os.getcwd(),'temp','4.png'),os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames',str(output_frame_counter+3).zfill(9)+'.png'))
-            shutil.move(os.path.join(os.getcwd(),'temp','5.png'),os.path.join(os.getcwd(),'temp','1.png'))
+            shutil.copyfile(os.path.join(original_frames_path,str(i+1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+1).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+3).zfill(9)+'.png'))
             output_frame_counter = output_frame_counter+4
             t2 = time.time()
+        elif add_type == '3': #8x
+            t1 = time.time()
+            shutil.copyfile(os.path.join(original_frames_path,str(i+1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+6).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+1).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+3).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+6).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+5).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+6).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+7).zfill(9)+'.png'))
+            output_frame_counter = output_frame_counter+8
+            t2 = time.time()
         t_all = t_all+t2-t1
-    del_files(os.path.join(os.getcwd(),'temp'))
 
-    print('正在处理'+str(frame_num)+'/'+str(frame_num)+'帧,完成了'+str((frame_num-1)/frame_num*100)+'%,预计剩余时间0s')
-    if add_type == '1': #x2
+    print('正在处理'+str(frame_num)+'/'+str(frame_num)+'帧,完成了'+str(round((frame_num-1)/frame_num*100,3))+'%,预计剩余时间0s')
+    if add_type == '1': #2x
         for i in range(0,2):
-            shutil.copyfile(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames',str(frame_num).zfill(9)+'.png'),os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames',str(output_frame_counter).zfill(9)+'.png'))
+            shutil.copyfile(os.path.join(original_frames_path,str(frame_num).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'))
             output_frame_counter = output_frame_counter+1
-    elif add_type == '2': #x4
+    elif add_type == '2': #4x
         for i in range(0,4):
-            shutil.copyfile(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames',str(frame_num).zfill(9)+'.png'),os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames',str(output_frame_counter).zfill(9)+'.png'))
+            shutil.copyfile(os.path.join(original_frames_path,str(frame_num).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'))
             output_frame_counter = output_frame_counter+1
-
+    elif add_type == '3': #8x
+        for i in range(0,8):
+            shutil.copyfile(os.path.join(original_frames_path,str(frame_num).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'))
+            output_frame_counter = output_frame_counter+1
+    
     print('处理完成\n')
     print('开始合成视频...')
     os.makedirs(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'output_videos'))
     
-    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i '+os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames','%09d.png')+' -vcodec h264 '+os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'output_videos',str(target_fps)+'fps_'+'.'.join(os.path.basename(f).split('.')[:-1])+'.mp4'))
+    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i '+os.path.join(interpolated_frames_path,'%09d.png')+' -vcodec h264 '+os.path.join(output_videos_path,str(target_fps)+'fps_'+'.'.join(os.path.basename(f).split('.')[:-1])+'.mp4'))
 
     print('视频合成完毕')
     

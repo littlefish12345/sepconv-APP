@@ -22,7 +22,7 @@ RAM: 32G ddr4 3200MHz
 ```
 cupy>=7.4.0
 torch>=1.4.0
-ffmpeg>=0.2.0
+ffmpeg-python>=0.2.0
 numpy>=1.18.1
 pillow>=7.0.0
 pyinstaller>=3.6
