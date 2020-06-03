@@ -22,7 +22,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.2'
+__VERSION__ = 'beta0.3'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -303,11 +303,13 @@ if __name__ == '__main__':
     print('这个视频的帧率是'+str(fps)+'fps\n')
     
     output_path = input('请输入输出文件夹的路径：')
-    original_frames_path = os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames')
-    interpolated_frames_path = os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'interpolated_frames')
-    output_videos_path = os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'output_videos')
+    file_name = '.'.join(os.path.basename(f).split('.')[:-1])
+    original_frames_path = os.path.join(output_path,file_name,'original_frames')
+    interpolated_frames_path = os.path.join(output_path,file_name,'interpolated_frames')
+    output_videos_path = os.path.join(output_path,file_name,'output_videos')
+    temp_audio_path = os.path.join(output_path,file_name,'audio_temp')
     
-    os.makedirs(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames'))
+    os.makedirs(original_frames_path)
     print('')
     
     moudle_type = input('请选择要使用的模型(1:l1,2:lf)：')
@@ -336,6 +338,10 @@ if __name__ == '__main__':
     
     print('正在提取视频帧...')
     os.system('ffmpeg -i '+f+' '+os.path.join(original_frames_path,'%09d.png'))
+    print('提取完毕\n')
+
+    print('正在提取音频...')
+    os.system('ffmpeg -i '+f+' -vn '+os.path.join(temp_audio_path,file_name+'.mp3'))
     print('提取完毕\n')
 
     frame_num = len([lists for lists in os.listdir(original_frames_path) if os.path.isfile(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames',lists))])
@@ -403,7 +409,7 @@ if __name__ == '__main__':
     print('开始合成视频...')
     os.makedirs(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'output_videos'))
     
-    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i '+os.path.join(interpolated_frames_path,'%09d.png')+' -vcodec h264 '+os.path.join(output_videos_path,str(target_fps)+'fps_'+'.'.join(os.path.basename(f).split('.')[:-1])+'.mp4'))
+    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i '+os.path.join(interpolated_frames_path,'%09d.png')+' -i '+os.path.join(temp_audio_path,file_name+'.mp3')+' -vcodec h264 -acodec aac -strict experimental '+os.path.join(output_videos_path,str(target_fps)+'fps_'+'.'.join(os.path.basename(f).split('.')[:-1])+'.mp4'))
 
     print('视频合成完毕')
     
