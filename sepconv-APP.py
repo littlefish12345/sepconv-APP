@@ -310,6 +310,7 @@ if __name__ == '__main__':
     temp_audio_path = os.path.join(output_path,file_name,'audio_temp')
     
     os.makedirs(original_frames_path)
+    os.makedirs(temp_audio_path)
     print('')
     
     moudle_type = input('请选择要使用的模型(1:l1,2:lf)：')
