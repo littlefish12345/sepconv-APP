@@ -22,7 +22,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.3'
+__VERSION__ = 'beta0.4'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -304,10 +304,10 @@ if __name__ == '__main__':
     
     output_path = input('请输入输出文件夹的路径：')
     file_name = '.'.join(os.path.basename(f).split('.')[:-1])
-    original_frames_path = os.path.join(output_path,file_name,'original_frames')
-    interpolated_frames_path = os.path.join(output_path,file_name,'interpolated_frames')
-    output_videos_path = os.path.join(output_path,file_name,'output_videos')
-    temp_audio_path = os.path.join(output_path,file_name,'audio_temp')
+    original_frames_path = os.path.join(output_path,'original_frames')
+    interpolated_frames_path = os.path.join(output_path,'interpolated_frames')
+    output_videos_path = os.path.join(output_path,'output_videos')
+    temp_audio_path = os.path.join(output_path,'audio_temp')
     
     os.makedirs(original_frames_path)
     os.makedirs(temp_audio_path)
@@ -336,8 +336,14 @@ if __name__ == '__main__':
         target_fps = fps*8
         
     print('输出帧率将是'+str(target_fps)+'fps\n')
-    
-    print('正在提取视频帧...')
+
+    cut_fps = True
+
+    output_fps = input('请输入输出要降低到的帧率(留空为不降低)：')
+    if not output_fps:
+        cut_fps = False
+
+    print('\n正在提取视频帧...')
     os.system('ffmpeg -i '+f+' '+os.path.join(original_frames_path,'%09d.png'))
     print('提取完毕\n')
 
@@ -345,7 +351,7 @@ if __name__ == '__main__':
     os.system('ffmpeg -i '+f+' -vn '+os.path.join(temp_audio_path,file_name+'.mp3'))
     print('提取完毕\n')
 
-    frame_num = len([lists for lists in os.listdir(original_frames_path) if os.path.isfile(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'original_frames',lists))])
+    frame_num = len([lists for lists in os.listdir(original_frames_path) if os.path.isfile(os.path.join(original_frames_path,lists))])
     print('一共有'+str(frame_num)+'帧需要处理\n')
 
     print('开始处理...\n')
@@ -408,10 +414,15 @@ if __name__ == '__main__':
     
     print('处理完成\n')
     print('开始合成视频...')
-    os.makedirs(os.path.join(output_path,'.'.join(os.path.basename(f).split('.')[:-1]),'output_videos'))
+    os.makedirs(output_videos_path)
     
     os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i '+os.path.join(interpolated_frames_path,'%09d.png')+' -i '+os.path.join(temp_audio_path,file_name+'.mp3')+' -vcodec h264 -acodec aac -strict experimental '+os.path.join(output_videos_path,str(target_fps)+'fps_'+'.'.join(os.path.basename(f).split('.')[:-1])+'.mp4'))
 
-    print('视频合成完毕')
+    print('视频合成完毕\n')
+
+    if cut_fps:
+        print('正在降低帧率...')
+        os.system('ffmpeg -i '+os.path.join(output_videos_path,str(target_fps)+'fps_'+'.'.join(os.path.basename(f).split('.')[:-1])+'.mp4')+' -r '+str(output_fps)+' '+os.path.join(output_videos_path,str(output_fps)+'fps_'+'.'.join(os.path.basename(f).split('.')[:-1])+'.mp4'))
+        print('降低完成\n')
     
     os.system('pause')
