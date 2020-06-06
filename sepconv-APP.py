@@ -1,6 +1,12 @@
 import torch
 import cupy
 
+import ctypes
+import threading
+import tkinter.font as tkFont
+from tkinter.filedialog import askopenfilename,askdirectory
+from tkinter import ttk
+import tkinter
 import ffmpeg
 import getopt
 import math
@@ -22,7 +28,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.4'
+__VERSION__ = 'beta0.5'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -245,6 +251,8 @@ class Network(torch.nn.Module):
         return tenDot1 + tenDot2
 
 netNetwork = None
+arguments_strModel = ''
+arguments_strPadding = ''
 
 def estimate(tenFirst, tenSecond):
     global netNetwork
@@ -296,62 +304,112 @@ def getFrameRate(target):
     fps = int(vs['r_frame_rate'].split('/')[0])/int(vs['r_frame_rate'].split('/')[1])
     return fps
 
-if __name__ == '__main__':
-    print('----------sepconv-APP '+__VERSION__+'----------\n')
-    f = input('请输入要补帧的视频的路径：')
-    fps = getFrameRate(f)
-    print('这个视频的帧率是'+str(fps)+'fps\n')
-    
-    output_path = input('请输入输出文件夹的路径：')
-    file_name = '.'.join(os.path.basename(f).split('.')[:-1])
-    original_frames_path = os.path.join(output_path,'original_frames')
-    interpolated_frames_path = os.path.join(output_path,'interpolated_frames')
-    output_videos_path = os.path.join(output_path,'output_videos')
-    temp_audio_path = os.path.join(output_path,'audio_temp')
+input_file_path = ''
+output_floder_path = ''
+fps = 0
+target_fps = 0
+moudle_chose = '2'
+padding_chose = '2'
+multiple_chose = '1'
+cut_fps_chose = False
+
+def moudle_chose_func(event):
+    global moudle_chose
+    if moudle_chose_combobox.get() == 'lf':
+        moudle_chose = '2'
+    else:
+        moudle_chose = '1'
+
+def padding_chose_func(event):
+    global padding_chose
+    if padding_chose_combobox.get() == 'improved':
+        padding_chose = '2'
+    else:
+        padding_chose = '1'
+
+def multiple_chose_func(event):
+    global multiple_chose,target_fps,fps
+    if multiple_chose_combobox.get() == '2x':
+        multiple_chose = '1'
+        target_fps = fps*2
+    elif multiple_chose_combobox.get() == '4x':
+        multiple_chose = '2'
+        target_fps = fps*4
+    else:
+        multiple_chose = '3'
+        target_fps = fps*8
+
+    if target_fps != 0:
+        output_fps_label['text'] = '输出帧率为：'+str(target_fps)+'fps'
+
+def cut_fps_chose_func():
+    global cut_fps_chose
+    if cut_fps_var.get() == 1:
+        cut_fps_chose = True
+    else:
+        cut_fps_chose = False
+
+def cut_fps_entry_only_num(content):
+    try:
+        float(content)
+    except:
+        if content != '':
+            return False
+    return True
+
+def input_file_func():
+    global output_floder_path,input_file_path,fps,target_fps,multiple_chose
+    input_file_path = askopenfilename(title="请选择一个要打开的视频文件",filetypes=[("任何支持格式的视频文件", "*.mp4;*.mkv;*.flv;*.avi;*.mov;*.rmvb")])
+    input_file_path_label['text'] = input_file_path
+    fps = getFrameRate(input_file_path)
+    input_fps_label['text'] = '输入帧率为：'+str(fps)+'fps'
+    if multiple_chose == '1':
+        target_fps = fps*2
+    elif add_type == '2':
+        target_fps = fps*4
+    else:
+        target_fps = fps*8
+    output_fps_label['text'] = '输出帧率为：'+str(target_fps)+'fps'
+
+def output_floder_func():
+    global output_floder_path
+    output_floder_path = askdirectory(title="请选择输出文件夹")
+    output_floder_path_label['text'] = output_floder_path
+
+def render_background_func():
+    global input_file_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel
+    file_name = '.'.join(os.path.basename(input_file_path).split('.')[:-1])
+    original_frames_path = os.path.join(output_floder_path,'original_frames')
+    interpolated_frames_path = os.path.join(output_floder_path,'interpolated_frames')
+    output_videos_path = os.path.join(output_floder_path,'output_videos')
+    temp_audio_path = os.path.join(output_floder_path,'audio_temp')
     
     os.makedirs(original_frames_path)
     os.makedirs(temp_audio_path)
-    print('')
     
-    moudle_type = input('请选择要使用的模型(1:l1,2:lf)：')
-    if moudle_type == '1':
+    if moudle_chose == '1':
         arguments_strModel = 'l1'
     else:
         arguments_strModel = 'lf'
 
-    padding_type = input('请选择模型的处理方式(1:paper,2:improved)：')
-    if moudle_type == '1':
+    if padding_chose == '1':
         arguments_strPadding = 'paper'
     else:
         arguments_strPadding = 'improved'
 
-    target_fps = 0
-    
-    add_type = input('请输入要补帧的倍数(1:2x,2:4x,3:8x)：')
-    if add_type == '1':
-        target_fps = fps*2
-    elif add_type == '2':
-        target_fps = fps*4
-    elif add_type == '3':
-        target_fps = fps*8
-        
-    print('输出帧率将是'+str(target_fps)+'fps\n')
-
-    cut_fps = True
-
-    output_fps = input('请输入输出要降低到的帧率(留空为不降低)：')
-    if not output_fps:
-        cut_fps = False
+    if cut_fps_chose:
+        output_fps = float(cut_fps_input.get())
 
     print('\n正在提取视频帧...')
-    os.system('ffmpeg -i '+f+' '+os.path.join(original_frames_path,'%09d.png'))
+    os.system('ffmpeg -i '+input_file_path+' '+os.path.join(original_frames_path,'%09d.png'))
     print('提取完毕\n')
 
     print('正在提取音频...')
-    os.system('ffmpeg -i '+f+' -vn '+os.path.join(temp_audio_path,file_name+'.mp3'))
+    os.system('ffmpeg -i '+input_file_path+' -vn '+os.path.join(temp_audio_path,file_name+'.mp3'))
     print('提取完毕\n')
 
     frame_num = len([lists for lists in os.listdir(original_frames_path) if os.path.isfile(os.path.join(original_frames_path,lists))])
+    process_bar['maximum'] = frame_num
     print('一共有'+str(frame_num)+'帧需要处理\n')
 
     print('开始处理...\n')
@@ -367,16 +425,22 @@ if __name__ == '__main__':
     for i in range(1,frame_num):
         if t1 == 0:
             print('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间未知')
+            remain_time['text'] = '预计剩余时间：未知'
+            process_persent['text'] = str(round((i-1)/frame_num*100,3))+'%'
+            process_bar['value'] = i
         else:
             print('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间'+str(round(t_all/(i-1)*(frame_num-i),1))+'s')
+            remain_time['text'] = '预计剩余时间：'+str(round(t_all/(i-1)*(frame_num-i),1))+'s'
+            process_persent['text'] = str(round((i-1)/frame_num*100,3))+'%'
+            process_bar['value'] = i
             
-        if add_type == '1': #2x
+        if multiple_chose == '1': #2x
             t1 = time.time()
             shutil.copyfile(os.path.join(original_frames_path,str(i+1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'))
             genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+1).zfill(9)+'.png'))
             output_frame_counter = output_frame_counter+2
             t2 = time.time()
-        elif add_type == '2': #4x
+        elif multiple_chose == '2': #4x
             t1 = time.time()
             shutil.copyfile(os.path.join(original_frames_path,str(i+1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'))
             genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'))
@@ -384,7 +448,7 @@ if __name__ == '__main__':
             genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+3).zfill(9)+'.png'))
             output_frame_counter = output_frame_counter+4
             t2 = time.time()
-        elif add_type == '3': #8x
+        elif multiple_chose == '3': #8x
             t1 = time.time()
             shutil.copyfile(os.path.join(original_frames_path,str(i+1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'))
             genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'))
@@ -399,30 +463,110 @@ if __name__ == '__main__':
         t_all = t_all+t2-t1
 
     print('正在处理'+str(frame_num)+'/'+str(frame_num)+'帧,完成了'+str(round((frame_num-1)/frame_num*100,3))+'%,预计剩余时间0s')
-    if add_type == '1': #2x
+    remain_time['text'] = '预计剩余时间：0s'
+    process_persent['text'] = str(round((frame_num-1)/frame_num*100,3))+'%'
+    process_bar['value'] = frame_num
+    if multiple_chose == '1': #2x
         for i in range(0,2):
             shutil.copyfile(os.path.join(original_frames_path,str(frame_num).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'))
             output_frame_counter = output_frame_counter+1
-    elif add_type == '2': #4x
+    elif multiple_chose == '2': #4x
         for i in range(0,4):
             shutil.copyfile(os.path.join(original_frames_path,str(frame_num).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'))
             output_frame_counter = output_frame_counter+1
-    elif add_type == '3': #8x
+    elif multiple_chose == '3': #8x
         for i in range(0,8):
             shutil.copyfile(os.path.join(original_frames_path,str(frame_num).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'))
             output_frame_counter = output_frame_counter+1
     
     print('处理完成\n')
+    process_persent['text'] = '100%'
     print('开始合成视频...')
     os.makedirs(output_videos_path)
     
-    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i '+os.path.join(interpolated_frames_path,'%09d.png')+' -i '+os.path.join(temp_audio_path,file_name+'.mp3')+' -vcodec h264 -acodec aac -strict experimental '+os.path.join(output_videos_path,str(target_fps)+'fps_'+'.'.join(os.path.basename(f).split('.')[:-1])+'.mp4'))
+    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i '+os.path.join(interpolated_frames_path,'%09d.png')+' -i '+os.path.join(temp_audio_path,file_name+'.mp3')+' -vcodec h264 -acodec aac -strict experimental '+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4'))
 
     print('视频合成完毕\n')
 
-    if cut_fps:
+    if cut_fps_chose:
         print('正在降低帧率...')
-        os.system('ffmpeg -i '+os.path.join(output_videos_path,str(target_fps)+'fps_'+'.'.join(os.path.basename(f).split('.')[:-1])+'.mp4')+' -r '+str(output_fps)+' '+os.path.join(output_videos_path,str(output_fps)+'fps_'+'.'.join(os.path.basename(f).split('.')[:-1])+'.mp4'))
+        os.system('ffmpeg -i '+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4')+' -r '+str(output_fps)+' '+os.path.join(output_videos_path,str(output_fps)+'fps_'+file_name+'.mp4'))
         print('降低完成\n')
+
+def render_bootloader_func():
+    t = threading.Thread(target=render_background_func)
+    t.start()
+
+if __name__ == '__main__':
+    print('----------sepconv-APP '+__VERSION__+'----------\n')
+    root = tkinter.Tk()
+
+    #Windows专用对付dpi模糊的部分
+    ctypes.windll.shcore.SetProcessDpiAwareness(1)
+    ScaleFactor=ctypes.windll.shcore.GetScaleFactorForDevice(0)
+    root.tk.call('tk','scaling',ScaleFactor/75)
     
-    os.system('pause')
+    root.title('sepconv-APP '+__VERSION__)
+    tkinter.Label(root,text='sepconv-APP '+__VERSION__,font=tkFont.Font(size=20,weight=tkFont.BOLD)).grid(row=0,column=0,columnspan=2)
+    
+    tkinter.Button(root,text='输入视频',width=20,heigh=1,command=input_file_func).grid(row=1,sticky='nsew',pady=3,padx=3)
+    input_file_path_label = tkinter.Label(root,text='输入视频的目录',width=50,heigh=1,anchor='w')
+    input_file_path_label.grid(row=1,column=1,sticky='nsew',pady=3,padx=3)
+
+    input_fps_label = tkinter.Label(root,text='输入帧率为：未知',width=50,heigh=1,anchor='n')
+    input_fps_label.grid(row=2,column=0,sticky='nsew',pady=3,padx=3)
+    
+    tkinter.Button(root,text='输出视频',width=20,heigh=1,command=output_floder_func).grid(row=3,sticky='nsew',pady=3,padx=3)
+    output_floder_path_label = tkinter.Label(root,text='输出视频的目录',width=50,heigh=1,anchor='w')
+    output_floder_path_label.grid(row=3,column=1,sticky='nsew',pady=3,padx=3)
+
+    tkinter.Frame(height=2,bd=1,relief=tkinter.GROOVE,padx=10,width=950).grid(row=4,column=0,columnspan=2,padx=10,pady=6)
+
+    tkinter.Label(root,text='要使用的模型',width=50,heigh=1,anchor='n').grid(row=5,column=0,sticky='nsew',pady=3,padx=3)
+    moudle_chose_combobox = tkinter.ttk.Combobox(root,width=50,heigh=1,state='readonly',values=('l1','lf'))
+    moudle_chose_combobox.current(1)
+    moudle_chose_combobox.grid(row=5,column=1,sticky='nsew',pady=3,padx=3)
+    moudle_chose_combobox.bind("<<ComboboxSelected>>",moudle_chose_func)
+
+    tkinter.Label(root,text='模型的处理方式',width=50,heigh=1,anchor='n').grid(row=6,column=0,sticky='nsew',pady=3,padx=3)
+    padding_chose_combobox = tkinter.ttk.Combobox(root,width=50,heigh=1,state='readonly',values=('paper','improved'))
+    padding_chose_combobox.current(1)
+    padding_chose_combobox.grid(row=6,column=1,sticky='nsew',pady=3,padx=3)
+    padding_chose_combobox.bind("<<ComboboxSelected>>",padding_chose_func)
+
+    tkinter.Frame(root,height=2,bd=1,relief=tkinter.GROOVE,padx=10,width=950).grid(row=7,column=0,columnspan=2,padx=10,pady=6)
+
+    tkinter.Label(root,text='要补帧的倍数',width=50,heigh=1,anchor='n').grid(row=8,column=0,sticky='nsew',pady=3,padx=3)
+    multiple_chose_combobox = tkinter.ttk.Combobox(root,width=50,heigh=1,state='readonly',values=('2x','4x','8x'))
+    multiple_chose_combobox.current(0)
+    multiple_chose_combobox.grid(row=8,column=1,sticky='nsew',pady=3,padx=3)
+    multiple_chose_combobox.bind("<<ComboboxSelected>>",multiple_chose_func)
+
+    output_fps_label = tkinter.Label(root,text='输出帧率为：未知',width=50,heigh=1,anchor='n')
+    output_fps_label.grid(row=9,column=0,sticky='nsew',pady=3,padx=3)
+
+    tkinter.Frame(root,height=2,bd=1,relief=tkinter.GROOVE,padx=10,width=950).grid(row=10,column=0,columnspan=2,padx=10,pady=6)
+
+    frame1 = tkinter.Frame(root)
+    frame1.grid(row=11,column=0,columnspan=2,sticky='nsew',pady=3,padx=3)
+    cut_fps_var = tkinter.IntVar()
+    tkinter.Checkbutton(frame1,text='是否要降低输出帧率',variable=cut_fps_var,command=cut_fps_chose_func).grid(row=0,column=0,sticky='nsew',pady=3,padx=3)
+    tkinter.Label(frame1,text='要降低到的帧率：',heigh=1,anchor='e').grid(row=0,column=1,sticky='nsew',pady=3,padx=3)
+    cut_fps_value = tkinter.IntVar()
+    cut_fps_value.set('60')
+    cut_fps_entry_only_num_tk = root.register(cut_fps_entry_only_num)
+    cut_fps_input = tkinter.Entry(frame1,width=80,validate='key',textvariable=cut_fps_value,validatecommand=(cut_fps_entry_only_num_tk, '%P'))
+    cut_fps_input.grid(row=0,column=2,sticky='nsew',pady=3,padx=3)
+
+    frame2 = tkinter.Frame(root)
+    frame2.grid(row=12,column=0,columnspan=2,sticky='nsew',pady=3,padx=3)
+    remain_time = tkinter.Label(frame2,text='预计剩余时间：未知',heigh=1,anchor='w')
+    remain_time.grid(row=0,column=0,sticky='nsew',pady=3,padx=3)
+    process_persent = tkinter.Label(frame2,text='0%',heigh=1,anchor='w')
+    process_persent.grid(row=0,column=1,sticky='nsew',pady=3,padx=3)
+    process_bar = ttk.Progressbar(frame2,length=800,mode="determinate",orient=tkinter.HORIZONTAL)
+    process_bar.grid(row=0,column=2,sticky='nsew',pady=3,padx=3)
+
+    tkinter.Button(root,text='开始渲染',width=20,heigh=1,command=render_background_func).grid(row=13,columnspan=2,sticky='nsew',pady=3,padx=3)
+    
+    root.mainloop()
