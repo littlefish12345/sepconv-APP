@@ -27,3 +27,20 @@ numpy>=1.18.1
 pillow>=7.0.0
 pyinstaller>=3.6
 ```
+
+## 使用方法
+### Windows 64bit
+```
+安装python3.6.4
+安装cuda10.1
+运行windows-static-libraries-download.bat
+运行lib-install-cuda101.bat
+完成
+```
+
+## 编译方法
+### Windows 64bit
+```
+运行build-clear.bat
+运行build.bat
+```

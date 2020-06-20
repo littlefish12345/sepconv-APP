@@ -1,2 +1,6 @@
 build/
 temp-build/
+network/
+ffmpeg.exe
+ffprobe.exe
+.wget-hsts
