@@ -28,7 +28,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.5'
+__VERSION__ = 'beta0.6'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -401,11 +401,11 @@ def render_background_func():
         output_fps = float(cut_fps_input.get())
 
     print('\n正在提取视频帧...')
-    os.system('ffmpeg -i '+input_file_path+' '+os.path.join(original_frames_path,'%09d.png'))
+    os.system('ffmpeg -i \"'+input_file_path+'\" \"'+os.path.join(original_frames_path,'%09d.png\"'))
     print('提取完毕\n')
 
     print('正在提取音频...')
-    os.system('ffmpeg -i '+input_file_path+' -vn '+os.path.join(temp_audio_path,file_name+'.mp3'))
+    os.system('ffmpeg -i \"'+input_file_path+'\" -vn \"'+os.path.join(temp_audio_path,file_name+'.mp3\"'))
     print('提取完毕\n')
 
     frame_num = len([lists for lists in os.listdir(original_frames_path) if os.path.isfile(os.path.join(original_frames_path,lists))])
@@ -484,13 +484,13 @@ def render_background_func():
     print('开始合成视频...')
     os.makedirs(output_videos_path)
     
-    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i '+os.path.join(interpolated_frames_path,'%09d.png')+' -i '+os.path.join(temp_audio_path,file_name+'.mp3')+' -vcodec h264 -acodec aac -strict experimental '+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4'))
+    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i \"'+os.path.join(interpolated_frames_path,'%09d.png')+'\" -i \"'+os.path.join(temp_audio_path,file_name+'.mp3')+'\" -vcodec h264 -acodec aac -strict experimental \"'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4\"'))
 
     print('视频合成完毕\n')
 
     if cut_fps_chose:
         print('正在降低帧率...')
-        os.system('ffmpeg -i '+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4')+' -r '+str(output_fps)+' '+os.path.join(output_videos_path,str(output_fps)+'fps_'+file_name+'.mp4'))
+        os.system('ffmpeg -i \"'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4')+'\" -r '+str(output_fps)+' \"'+os.path.join(output_videos_path,str(output_fps)+'fps_'+file_name+'.mp4\"'))
         print('降低完成\n')
 
 def render_bootloader_func():
