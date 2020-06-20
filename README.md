@@ -1,7 +1,7 @@
 # sepconv-APP
 
 ## 简介
-一个基于sepconv-slomo的视频补帧软件
+一个基于sniklaus/sepconv-slomo的视频补帧软件
 
 ## 测试环境
 ### 系统环境
