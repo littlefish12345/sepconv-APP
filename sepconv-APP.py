@@ -30,7 +30,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.7'
+__VERSION__ = 'beta0.8'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -396,6 +396,9 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
         q.put(0)
         text = q.get(block=True)
         return text
+    def set_status_bar_text(text):
+        q.put('set_status_bar_text')
+        q.put(text)
     file_name = '.'.join(os.path.basename(input_file_path).split('.')[:-1])
     original_frames_path = os.path.join(output_floder_path,'original_frames')
     interpolated_frames_path = os.path.join(output_floder_path,'interpolated_frames')
@@ -421,18 +424,24 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
         output_fps = float(get_fps_input())
 
     print('\n正在提取视频帧...')
+    set_status_bar_text('正在提取视频帧...')
     os.system('ffmpeg -i \"'+input_file_path+'\" \"'+os.path.join(original_frames_path,'%09d.png\"'))
     print('提取完毕\n')
+    set_status_bar_text('提取完毕')
 
     print('正在提取音频...')
+    set_status_bar_text('正在提取音频...')
     os.system('ffmpeg -i \"'+input_file_path+'\" -vn \"'+os.path.join(temp_audio_path,file_name+'.mp3\"'))
     print('提取完毕\n')
+    set_status_bar_text('提取完毕')
 
     frame_num = len([lists for lists in os.listdir(original_frames_path) if os.path.isfile(os.path.join(original_frames_path,lists))])
     set_process_bar_maxium(frame_num)
     print('一共有'+str(frame_num)+'帧需要处理\n')
+    set_status_bar_text('一共有'+str(frame_num)+'帧需要处理')
 
     print('开始处理...\n')
+    set_status_bar_text('开始处理...')
 
     os.makedirs(interpolated_frames_path)
     shutil.copyfile(os.path.join(original_frames_path,str(1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(1).zfill(9)+'.png'))
@@ -445,11 +454,13 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
     for i in range(1,frame_num):
         if t1 == 0:
             print('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间未知')
+            set_status_bar_text('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间未知')
             set_remain_time_text('预计剩余时间：未知')
             set_process_persent_text(str(round((i-1)/frame_num*100,3))+'%')
             set_process_bar_value(i)
         else:
             print('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间'+str(round(t_all/(i-1)*(frame_num-i),1))+'s')
+            set_status_bar_text('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间'+str(round(t_all/(i-1)*(frame_num-i),1))+'s')
             set_remain_time_text('预计剩余时间：'+str(round(t_all/(i-1)*(frame_num-i),1))+'s')
             set_process_persent_text(str(round((i-1)/frame_num*100,3))+'%')
             set_process_bar_value(i)
@@ -483,6 +494,7 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
         t_all = t_all+t2-t1
 
     print('正在处理'+str(frame_num)+'/'+str(frame_num)+'帧,完成了'+str(round((frame_num-1)/frame_num*100,3))+'%,预计剩余时间0s')
+    set_status_bar_text('正在处理'+str(frame_num)+'/'+str(frame_num)+'帧,完成了'+str(round((frame_num-1)/frame_num*100,3))+'%,预计剩余时间0s')
     set_remain_time_text('预计剩余时间：0s')
     set_process_persent_text(str(round((frame_num-1)/frame_num*100,3))+'%')
     set_process_bar_value(frame_num)
@@ -500,18 +512,26 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
             output_frame_counter = output_frame_counter+1
     
     print('处理完成\n')
+    set_status_bar_text('处理完成')
     set_process_persent_text('100%')
-    print('开始合成视频...')
+    print('正在合成视频...')
+    set_status_bar_text('正在合成视频...')
     os.makedirs(output_videos_path)
     
     os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i \"'+os.path.join(interpolated_frames_path,'%09d.png')+'\" -i \"'+os.path.join(temp_audio_path,file_name+'.mp3')+'\" -vcodec h264 -acodec aac -strict experimental \"'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4\"'))
 
     print('视频合成完毕\n')
+    set_status_bar_text('视频合成完毕')
 
     if cut_fps_chose:
         print('正在降低帧率...')
+        set_status_bar_text('正在降低帧率...')
         os.system('ffmpeg -i \"'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4')+'\" -r '+str(output_fps)+' \"'+os.path.join(output_videos_path,str(output_fps)+'fps_'+file_name+'.mp4\"'))
         print('降低完成\n')
+        set_status_bar_text('降低完成')
+
+    print('处理完成\n')
+    set_status_bar_text('处理完成')
 
 def render_communicate_func():
     global input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel
@@ -532,6 +552,8 @@ def render_communicate_func():
         elif data == 'set_process_bar_value':
             text = cut_fps_input.get()
             q.put(text)
+        elif data == 'set_status_bar_text':
+            status_bar['text'] = data2
 
 def render_bootloader_func():
     t = threading.Thread(target=render_communicate_func)
@@ -608,5 +630,8 @@ if __name__ == '__main__':
     process_bar.grid(row=0,column=2,sticky='nsew',pady=3,padx=3)
 
     tkinter.Button(root,text='开始渲染',width=20,heigh=1,command=render_bootloader_func).grid(row=13,columnspan=2,sticky='nsew',pady=3,padx=3)
+
+    status_bar = tkinter.Label(root,text="启动完成",bd=1,relief=tkinter.SUNKEN,anchor='w')
+    status_bar.grid(row=14,column=0,columnspan=2,sticky='we')
     
     root.mainloop()
