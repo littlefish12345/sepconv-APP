@@ -1,9 +1,11 @@
 import torch
 import cupy
 
+import platform
 import ctypes
 import threading
 import tkinter.font as tkFont
+import multiprocessing
 from tkinter.filedialog import askopenfilename,askdirectory
 from tkinter import ttk
 import tkinter
@@ -28,7 +30,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.6'
+__VERSION__ = 'beta0.7'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -172,7 +174,7 @@ class ModuleSepconv(torch.nn.Module):
 		return _FunctionSepconv.apply(tenInput, tenVertical, tenHorizontal)
 
 class Network(torch.nn.Module):
-    def __init__(self):
+    def __init__(self, arguments_strModel):
         super(Network, self).__init__()
 
         def Basic(intInput, intOutput):
@@ -254,11 +256,11 @@ netNetwork = None
 arguments_strModel = ''
 arguments_strPadding = ''
 
-def estimate(tenFirst, tenSecond):
+def estimate(tenFirst, tenSecond, arguments_strModel, arguments_strPadding):
     global netNetwork
 
     if netNetwork is None:
-        netNetwork = Network().cuda().eval()
+        netNetwork = Network(arguments_strModel).cuda().eval()
 
     assert(tenFirst.shape[1] == tenSecond.shape[1])
     assert(tenFirst.shape[2] == tenSecond.shape[2])
@@ -292,10 +294,10 @@ def estimate(tenFirst, tenSecond):
 
     return torch.nn.functional.pad(input=netNetwork(tenPreprocessedFirst, tenPreprocessedSecond), pad=[ 0 - intPaddingLeft, 0 - intPaddingRight, 0 - intPaddingTop, 0 - intPaddingBottom ], mode='replicate')[0, :, :, :].cpu()
 
-def genrate(firstImage,secondImage,outputImage):
+def genrate(firstImage,secondImage,outputImage,arguments_strModel,arguments_strPadding):
     tenFirst = torch.FloatTensor(numpy.ascontiguousarray(numpy.array(PIL.Image.open(firstImage))[:, :, ::-1].transpose(2, 0, 1).astype(numpy.float32) * (1.0 / 255.0)))
     tenSecond = torch.FloatTensor(numpy.ascontiguousarray(numpy.array(PIL.Image.open(secondImage))[:, :, ::-1].transpose(2, 0, 1).astype(numpy.float32) * (1.0 / 255.0)))
-    tenOutput = estimate(tenFirst, tenSecond)
+    tenOutput = estimate(tenFirst, tenSecond, arguments_strModel, arguments_strPadding)
     PIL.Image.fromarray((tenOutput.clamp(0.0, 1.0).numpy().transpose(1, 2, 0)[:, :, ::-1] * 255.0).astype(numpy.uint8)).save(outputImage)
 
 def getFrameRate(target):
@@ -376,13 +378,31 @@ def output_floder_func():
     output_floder_path = askdirectory(title="请选择输出文件夹")
     output_floder_path_label['text'] = output_floder_path
 
-def render_background_func():
-    global input_file_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel
+def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel):
+    def set_process_bar_maxium(num):
+        q.put('process_bar_maxium')
+        q.put(num)
+    def set_remain_time_text(text):
+        q.put('set_remain_time_text')
+        q.put(text)
+    def set_process_persent_text(text):
+        q.put('set_process_persent_text')
+        q.put(text)
+    def set_process_bar_value(num):
+        q.put('set_process_bar_value')
+        q.put(num)
+    def get_fps_input():
+        q.put('set_process_bar_value')
+        q.put(0)
+        text = q.get(block=True)
+        return text
     file_name = '.'.join(os.path.basename(input_file_path).split('.')[:-1])
     original_frames_path = os.path.join(output_floder_path,'original_frames')
     interpolated_frames_path = os.path.join(output_floder_path,'interpolated_frames')
     output_videos_path = os.path.join(output_floder_path,'output_videos')
     temp_audio_path = os.path.join(output_floder_path,'audio_temp')
+
+    print(original_frames_path)
     
     os.makedirs(original_frames_path)
     os.makedirs(temp_audio_path)
@@ -398,7 +418,7 @@ def render_background_func():
         arguments_strPadding = 'improved'
 
     if cut_fps_chose:
-        output_fps = float(cut_fps_input.get())
+        output_fps = float(get_fps_input())
 
     print('\n正在提取视频帧...')
     os.system('ffmpeg -i \"'+input_file_path+'\" \"'+os.path.join(original_frames_path,'%09d.png\"'))
@@ -409,7 +429,7 @@ def render_background_func():
     print('提取完毕\n')
 
     frame_num = len([lists for lists in os.listdir(original_frames_path) if os.path.isfile(os.path.join(original_frames_path,lists))])
-    process_bar['maximum'] = frame_num
+    set_process_bar_maxium(frame_num)
     print('一共有'+str(frame_num)+'帧需要处理\n')
 
     print('开始处理...\n')
@@ -425,47 +445,47 @@ def render_background_func():
     for i in range(1,frame_num):
         if t1 == 0:
             print('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间未知')
-            remain_time['text'] = '预计剩余时间：未知'
-            process_persent['text'] = str(round((i-1)/frame_num*100,3))+'%'
-            process_bar['value'] = i
+            set_remain_time_text('预计剩余时间：未知')
+            set_process_persent_text(str(round((i-1)/frame_num*100,3))+'%')
+            set_process_bar_value(i)
         else:
             print('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间'+str(round(t_all/(i-1)*(frame_num-i),1))+'s')
-            remain_time['text'] = '预计剩余时间：'+str(round(t_all/(i-1)*(frame_num-i),1))+'s'
-            process_persent['text'] = str(round((i-1)/frame_num*100,3))+'%'
-            process_bar['value'] = i
+            set_remain_time_text('预计剩余时间：'+str(round(t_all/(i-1)*(frame_num-i),1))+'s')
+            set_process_persent_text(str(round((i-1)/frame_num*100,3))+'%')
+            set_process_bar_value(i)
             
         if multiple_chose == '1': #2x
             t1 = time.time()
             shutil.copyfile(os.path.join(original_frames_path,str(i+1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+1).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+1).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
             output_frame_counter = output_frame_counter+2
             t2 = time.time()
         elif multiple_chose == '2': #4x
             t1 = time.time()
             shutil.copyfile(os.path.join(original_frames_path,str(i+1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+1).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+3).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+1).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+3).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
             output_frame_counter = output_frame_counter+4
             t2 = time.time()
         elif multiple_chose == '3': #8x
             t1 = time.time()
             shutil.copyfile(os.path.join(original_frames_path,str(i+1).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+6).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+1).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+3).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+6).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+5).zfill(9)+'.png'))
-            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+6).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+7).zfill(9)+'.png'))
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+6).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+1).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+2).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+3).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+4).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+6).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+5).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
+            genrate(os.path.join(interpolated_frames_path,str(output_frame_counter+6).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+8).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter+7).zfill(9)+'.png'),arguments_strModel,arguments_strPadding)
             output_frame_counter = output_frame_counter+8
             t2 = time.time()
         t_all = t_all+t2-t1
 
     print('正在处理'+str(frame_num)+'/'+str(frame_num)+'帧,完成了'+str(round((frame_num-1)/frame_num*100,3))+'%,预计剩余时间0s')
-    remain_time['text'] = '预计剩余时间：0s'
-    process_persent['text'] = str(round((frame_num-1)/frame_num*100,3))+'%'
-    process_bar['value'] = frame_num
+    set_remain_time_text('预计剩余时间：0s')
+    set_process_persent_text(str(round((frame_num-1)/frame_num*100,3))+'%')
+    set_process_bar_value(frame_num)
     if multiple_chose == '1': #2x
         for i in range(0,2):
             shutil.copyfile(os.path.join(original_frames_path,str(frame_num).zfill(9)+'.png'),os.path.join(interpolated_frames_path,str(output_frame_counter).zfill(9)+'.png'))
@@ -480,7 +500,7 @@ def render_background_func():
             output_frame_counter = output_frame_counter+1
     
     print('处理完成\n')
-    process_persent['text'] = '100%'
+    set_process_persent_text('100%')
     print('开始合成视频...')
     os.makedirs(output_videos_path)
     
@@ -493,18 +513,38 @@ def render_background_func():
         os.system('ffmpeg -i \"'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4')+'\" -r '+str(output_fps)+' \"'+os.path.join(output_videos_path,str(output_fps)+'fps_'+file_name+'.mp4\"'))
         print('降低完成\n')
 
+def render_communicate_func():
+    global input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel
+    q = multiprocessing.Queue()
+    p = multiprocessing.Process(target=render_background_func,args=(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel))
+    p.start()
+    while True:
+        data = q.get(block=True)
+        data2 = q.get(block=True)
+        if data == 'process_bar_maxium':
+            process_bar['maximum'] = data2
+        elif data == 'set_remain_time_text':
+            remain_time['text'] = data2
+        elif data == 'set_process_persent_text':
+            process_persent['text'] = data2
+        elif data == 'set_process_bar_value':
+            process_bar['value'] = data2
+        elif data == 'set_process_bar_value':
+            text = cut_fps_input.get()
+            q.put(text)
+
 def render_bootloader_func():
-    t = threading.Thread(target=render_background_func)
+    t = threading.Thread(target=render_communicate_func)
     t.start()
 
 if __name__ == '__main__':
     print('----------sepconv-APP '+__VERSION__+'----------\n')
     root = tkinter.Tk()
 
-    #Windows专用对付dpi模糊的部分
-    ctypes.windll.shcore.SetProcessDpiAwareness(1)
-    ScaleFactor=ctypes.windll.shcore.GetScaleFactorForDevice(0)
-    root.tk.call('tk','scaling',ScaleFactor/75)
+    if(platform.system()=='Windows'): #Windows专用对付dpi模糊的部分
+            ctypes.windll.shcore.SetProcessDpiAwareness(1)
+            ScaleFactor=ctypes.windll.shcore.GetScaleFactorForDevice(0)
+            root.tk.call('tk','scaling',ScaleFactor/75)
     
     root.title('sepconv-APP '+__VERSION__)
     tkinter.Label(root,text='sepconv-APP '+__VERSION__,font=tkFont.Font(size=20,weight=tkFont.BOLD)).grid(row=0,column=0,columnspan=2)
@@ -567,6 +607,6 @@ if __name__ == '__main__':
     process_bar = ttk.Progressbar(frame2,length=800,mode="determinate",orient=tkinter.HORIZONTAL)
     process_bar.grid(row=0,column=2,sticky='nsew',pady=3,padx=3)
 
-    tkinter.Button(root,text='开始渲染',width=20,heigh=1,command=render_background_func).grid(row=13,columnspan=2,sticky='nsew',pady=3,padx=3)
+    tkinter.Button(root,text='开始渲染',width=20,heigh=1,command=render_bootloader_func).grid(row=13,columnspan=2,sticky='nsew',pady=3,padx=3)
     
     root.mainloop()
