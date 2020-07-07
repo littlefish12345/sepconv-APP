@@ -30,7 +30,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.8'
+__VERSION__ = 'beta0.9'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -378,7 +378,7 @@ def output_floder_func():
     output_floder_path = askdirectory(title="请选择输出文件夹")
     output_floder_path_label['text'] = output_floder_path
 
-def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel):
+def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel,multiple_chose,output_fps):
     def set_process_bar_maxium(num):
         q.put('process_bar_maxium')
         q.put(num)
@@ -536,7 +536,7 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
 def render_communicate_func():
     global input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel
     q = multiprocessing.Queue()
-    p = multiprocessing.Process(target=render_background_func,args=(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel))
+    p = multiprocessing.Process(target=render_background_func,args=(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel,multiple_chose,output_fps))
     p.start()
     while True:
         data = q.get(block=True)
@@ -560,6 +560,7 @@ def render_bootloader_func():
     t.start()
 
 if __name__ == '__main__':
+    multiprocessing.freeze_support()
     print('----------sepconv-APP '+__VERSION__+'----------\n')
     root = tkinter.Tk()
 
