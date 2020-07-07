@@ -378,7 +378,7 @@ def output_floder_func():
     output_floder_path = askdirectory(title="请选择输出文件夹")
     output_floder_path_label['text'] = output_floder_path
 
-def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel,multiple_chose,output_fps):
+def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel,multiple_chose):
     def set_process_bar_maxium(num):
         q.put('process_bar_maxium')
         q.put(num)
@@ -536,7 +536,7 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
 def render_communicate_func():
     global input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel
     q = multiprocessing.Queue()
-    p = multiprocessing.Process(target=render_background_func,args=(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel,multiple_chose,output_fps))
+    p = multiprocessing.Process(target=render_background_func,args=(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel,multiple_chose))
     p.start()
     while True:
         data = q.get(block=True)
