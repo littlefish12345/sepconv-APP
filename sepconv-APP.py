@@ -30,7 +30,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.9'
+__VERSION__ = 'beta0.10'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -378,7 +378,7 @@ def output_floder_func():
     output_floder_path = askdirectory(title="请选择输出文件夹")
     output_floder_path_label['text'] = output_floder_path
 
-def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel,multiple_chose):
+def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,cut_fps_text,target_fps,arguments_strPadding,arguments_strModel,multiple_chose):
     def set_process_bar_maxium(num):
         q.put('process_bar_maxium')
         q.put(num)
@@ -391,11 +391,6 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
     def set_process_bar_value(num):
         q.put('set_process_bar_value')
         q.put(num)
-    def get_fps_input():
-        q.put('set_process_bar_value')
-        q.put(0)
-        text = q.get(block=True)
-        return text
     def set_status_bar_text(text):
         q.put('set_status_bar_text')
         q.put(text)
@@ -421,7 +416,7 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
         arguments_strPadding = 'improved'
 
     if cut_fps_chose:
-        output_fps = float(get_fps_input())
+        output_fps = float(cut_fps_text)
 
     print('\n正在提取视频帧...')
     set_status_bar_text('正在提取视频帧...')
@@ -532,11 +527,13 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
 
     print('处理完成\n')
     set_status_bar_text('处理完成')
+    exit()
 
 def render_communicate_func():
     global input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel
+    cut_fps_text = cut_fps_input.get()
     q = multiprocessing.Queue()
-    p = multiprocessing.Process(target=render_background_func,args=(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel,multiple_chose))
+    p = multiprocessing.Process(target=render_background_func,args=(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,cut_fps_text,arguments_strPadding,arguments_strModel,multiple_chose))
     p.start()
     while True:
         data = q.get(block=True)

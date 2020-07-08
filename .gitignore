@@ -1,5 +1,7 @@
 build/
 temp-build/
+build-onefile/
+temp-build-onefile/
 network/
 ffmpeg.exe
 ffprobe.exe
