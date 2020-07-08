@@ -4,7 +4,6 @@ block_cipher = None
 
 
 a = Analysis(['sepconv-APP.py'],
-             pathex=['D:\\sepconv-slomo\\sepconv-APP\\temp-build'],
              binaries=[],
              datas=[],
              hiddenimports=['fastrlock','fastrlock.rlock','cupy.core.flags','cupy.core._routines_indexing','cupy.core._dtype','cupy.core._scalar','cupy.core._ufuncs','cupy.core._routines_sorting','pkg_resources.py2_warn'],
