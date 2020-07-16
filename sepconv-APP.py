@@ -546,7 +546,7 @@ def render_background_func(q,qp,input_file_path,output_floder_path,moudle_chose,
     set_status_bar_text('正在合成视频...')
     os.makedirs(output_videos_path)
     
-    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i \"'+os.path.join(interpolated_frames_path,'%09d.png')+'\" -i \"'+os.path.join(temp_audio_path,file_name+'.mp3')+'\" -vcodec h264 -acodec aac -strict experimental \"'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4\"'))
+    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i \"'+os.path.join(interpolated_frames_path,'%09d.png')+'\" -i \"'+os.path.join(temp_audio_path,file_name+'.mp3')+'\" -vcodec h264 -acodec aac \"'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4\"'))
 
     print('视频合成完毕\n')
     set_status_bar_text('视频合成完毕')
