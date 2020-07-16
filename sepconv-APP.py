@@ -1,6 +1,6 @@
 import torch
 import cupy
-
+import pickle
 import platform
 import ctypes
 import threading
@@ -8,6 +8,7 @@ import tkinter.font as tkFont
 import multiprocessing
 from tkinter.filedialog import askopenfilename,askdirectory
 from tkinter import ttk
+import tkinter.messagebox
 import tkinter
 import ffmpeg
 import getopt
@@ -30,7 +31,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.10'
+__VERSION__ = 'beta0.11'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -378,7 +379,7 @@ def output_floder_func():
     output_floder_path = askdirectory(title="请选择输出文件夹")
     output_floder_path_label['text'] = output_floder_path
 
-def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,cut_fps_text,target_fps,arguments_strPadding,arguments_strModel,multiple_chose):
+def render_background_func(q,qp,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,cut_fps_text,target_fps,arguments_strPadding,arguments_strModel,multiple_chose):
     def set_process_bar_maxium(num):
         q.put('process_bar_maxium')
         q.put(num)
@@ -394,6 +395,16 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
     def set_status_bar_text(text):
         q.put('set_status_bar_text')
         q.put(text)
+    def get_pause_or_stop_status():
+        qp.put('get_status')
+        status = qp.get(block=True)
+        return status
+    def render_finish():
+        q.put('finish')
+        q.put('finish')
+    def start_or_save():
+        data = qp.get(block=True)
+        return data
     file_name = '.'.join(os.path.basename(input_file_path).split('.')[:-1])
     original_frames_path = os.path.join(output_floder_path,'original_frames')
     interpolated_frames_path = os.path.join(output_floder_path,'interpolated_frames')
@@ -445,8 +456,30 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
     t2 = 0
     t_all = 0
     output_frame_counter = 1
+
+    start_frame = 1
+
+    stop = False
     
-    for i in range(1,frame_num):
+    for i in range(start_frame,frame_num):
+        now_status = get_pause_or_stop_status()
+        if now_status != 'keep':
+            if now_status == 'pause':
+                print('暂停中')
+                set_status_bar_text('暂停中')
+                while True:
+                    data = start_or_save()
+                    if data == 'start':
+                        break
+            elif data == 'save':
+                save_data = [input_file_path,output_floder_path,moudle_chose,cut_fps_chose,cut_fps_text,target_fps,arguments_strPadding,arguments_strModel,multiple_chose,t_all,i]
+                f = open(os.path.join(output_floder_path,'save.sepconv'),'wb')
+                pickle.dump(save_data,f,2)
+                f.close()
+
+        if stop:
+            break
+        
         if t1 == 0:
             print('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间未知')
             set_status_bar_text('正在处理'+str(i)+'/'+str(frame_num)+'帧,完成了'+str(round((i-1)/frame_num*100,3))+'%,预计剩余时间未知')
@@ -527,14 +560,39 @@ def render_background_func(q,input_file_path,output_floder_path,moudle_chose,cut
 
     print('处理完成\n')
     set_status_bar_text('处理完成')
-    exit()
+    render_finish()
+
+def render_pause_control_func(qp):
+    global render_shoud_pause,render_should_save,render_should_stop
+    while True:
+        data = qp.get(block=True)
+        if render_should_pause:
+            qp.put('pause')
+        elif render_should_stop:
+            qp.put('stop')
+        else:
+            qp.put('keep')
+        if render_should_pause:
+            while True:
+                if not render_should_pause:
+                    qp.put('start')
+                    break
+                elif render_should_save:
+                    render_should_save = False
+                    qp.put('save')
+                elif render_should_stop:
+                    render_should_stop = False
+                    qp.put('stop')
 
 def render_communicate_func():
-    global input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel
+    global input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,arguments_strPadding,arguments_strModel,is_rendering
     cut_fps_text = cut_fps_input.get()
     q = multiprocessing.Queue()
-    p = multiprocessing.Process(target=render_background_func,args=(q,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,cut_fps_text,arguments_strPadding,arguments_strModel,multiple_chose))
+    qp = multiprocessing.Queue()
+    p = multiprocessing.Process(target=render_background_func,args=(q,qp,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,cut_fps_text,arguments_strPadding,arguments_strModel,multiple_chose))
     p.start()
+    t = threading.Thread(target=render_pause_control_func,args=(qp,))
+    t.start()
     while True:
         data = q.get(block=True)
         data2 = q.get(block=True)
@@ -551,10 +609,47 @@ def render_communicate_func():
             q.put(text)
         elif data == 'set_status_bar_text':
             status_bar['text'] = data2
+        elif data == 'finish':
+            break
+    is_rendering = False
+
+is_rendering = False
+render_should_pause = False
+render_should_save = False
+render_should_stop = False
 
 def render_bootloader_func():
-    t = threading.Thread(target=render_communicate_func)
-    t.start()
+    global is_rendering,render_should_pause
+    if not is_rendering:
+        t = threading.Thread(target=render_communicate_func)
+        t.start()
+        is_rendering = True
+    if render_should_pause == True:
+        render_should_pause = False
+
+def render_pause():
+    global render_should_pause
+    render_should_pause = True
+    status_bar['text'] = '正在尝试暂停...'
+
+def render_stop():
+    global render_should_stop
+    render_should_stop = True
+    status_bar['text'] = '正在尝试停止...'
+
+def render_save():
+    global render_should_save
+    render_should_save = True
+
+def render_load():
+    if tkinter.messagebox.askyesno('加载', '确认要加载吗？当前未保存数据将丢失'):
+        load_file_path = askopenfilename(title="请选择sepconv-APP的保存文件，会保存在目标文件夹下",filetypes=[("sepconv-APP保存文件", "save.sepconv")])
+        f = open(load_file_path,'rb')
+        load_data = pickle,load(f)
+        f.close()
+        print(load_data)
+    else:
+        pass
 
 if __name__ == '__main__':
     multiprocessing.freeze_support()
@@ -562,9 +657,9 @@ if __name__ == '__main__':
     root = tkinter.Tk()
 
     if(platform.system()=='Windows'): #Windows专用对付dpi模糊的部分
-            ctypes.windll.shcore.SetProcessDpiAwareness(1)
-            ScaleFactor=ctypes.windll.shcore.GetScaleFactorForDevice(0)
-            root.tk.call('tk','scaling',ScaleFactor/75)
+        ctypes.windll.shcore.SetProcessDpiAwareness(1)
+        ScaleFactor=ctypes.windll.shcore.GetScaleFactorForDevice(0)
+        root.tk.call('tk','scaling',ScaleFactor/75)
     
     root.title('sepconv-APP '+__VERSION__)
     tkinter.Label(root,text='sepconv-APP '+__VERSION__,font=tkFont.Font(size=20,weight=tkFont.BOLD)).grid(row=0,column=0,columnspan=2)
@@ -627,9 +722,14 @@ if __name__ == '__main__':
     process_bar = ttk.Progressbar(frame2,length=800,mode="determinate",orient=tkinter.HORIZONTAL)
     process_bar.grid(row=0,column=2,sticky='nsew',pady=3,padx=3)
 
-    tkinter.Button(root,text='开始渲染',width=20,heigh=1,command=render_bootloader_func).grid(row=13,columnspan=2,sticky='nsew',pady=3,padx=3)
+    frame3 = tkinter.Frame(root)
+    frame3.grid(row=13,column=0,columnspan=3,sticky='nsew',pady=3,padx=3)
+    tkinter.Button(frame3,text='开始渲染',width=57,heigh=1,command=render_bootloader_func).grid(row=0,column=0,sticky='nsew',pady=3,padx=3)
+    tkinter.Button(frame3,text='暂停渲染',width=57,heigh=1,command=render_pause).grid(row=0,column=1,sticky='nsew',pady=3,padx=3)
+    #tkinter.Button(frame3,text='保存进度',width=27,heigh=1,command=render_save).grid(row=0,column=2,sticky='nsew',pady=3,padx=3)
+    #tkinter.Button(frame3,text='加载进度',width=27,heigh=1,command=render_load).grid(row=0,column=3,sticky='nsew',pady=3,padx=3)
 
     status_bar = tkinter.Label(root,text="启动完成",bd=1,relief=tkinter.SUNKEN,anchor='w')
-    status_bar.grid(row=14,column=0,columnspan=2,sticky='we')
+    status_bar.grid(row=15,column=0,columnspan=2,sticky='we')
     
     root.mainloop()
