@@ -31,7 +31,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.11'
+__VERSION__ = 'beta0.12'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -546,7 +546,7 @@ def render_background_func(q,qp,input_file_path,output_floder_path,moudle_chose,
     set_status_bar_text('正在合成视频...')
     os.makedirs(output_videos_path)
     
-    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i \"'+os.path.join(interpolated_frames_path,'%09d.png')+'\" -i \"'+os.path.join(temp_audio_path,file_name+'.mp3')+'\" -vcodec h264 -acodec aac \"'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4\"'))
+    os.system('ffmpeg -f image2 -r '+str(target_fps)+' -i "'+os.path.join(interpolated_frames_path,'%09d.png')+'" -i "'+os.path.join(temp_audio_path,file_name+'.mp3')+'" -vcodec h264 -acodec aac "'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4"'))
 
     print('视频合成完毕\n')
     set_status_bar_text('视频合成完毕')
@@ -554,7 +554,7 @@ def render_background_func(q,qp,input_file_path,output_floder_path,moudle_chose,
     if cut_fps_chose:
         print('正在降低帧率...')
         set_status_bar_text('正在降低帧率...')
-        os.system('ffmpeg -i \"'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4')+'\" -r '+str(output_fps)+' \"'+os.path.join(output_videos_path,str(output_fps)+'fps_'+file_name+'.mp4\"'))
+        os.system('ffmpeg -i "'+os.path.join(output_videos_path,str(target_fps)+'fps_'+file_name+'.mp4')+'" -r '+str(output_fps)+' "'+os.path.join(output_videos_path,str(output_fps)+'fps_'+file_name+'.mp4"'))
         print('降低完成\n')
         set_status_bar_text('降低完成')
 
@@ -589,7 +589,7 @@ def render_communicate_func():
     cut_fps_text = cut_fps_input.get()
     q = multiprocessing.Queue()
     qp = multiprocessing.Queue()
-    p = multiprocessing.Process(target=render_background_func,args=(q,qp,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,target_fps,cut_fps_text,arguments_strPadding,arguments_strModel,multiple_chose))
+    p = multiprocessing.Process(target=render_background_func,args=(q,qp,input_file_path,output_floder_path,moudle_chose,cut_fps_chose,cut_fps_text,target_fps,arguments_strPadding,arguments_strModel,multiple_chose))
     p.start()
     t = threading.Thread(target=render_pause_control_func,args=(qp,))
     t.start()
