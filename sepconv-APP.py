@@ -31,7 +31,7 @@ torch.backends.cudnn.enabled = True #确保使用cudnn来提高计算性能
 arguments_strModel = '' #选择用哪个模型l1/lf
 arguments_strPadding = '' #选择模型的处理方式paper/improved
 
-__VERSION__ = 'beta0.12'
+__VERSION__ = 'beta0.13'
 
 kernel_Sepconv_updateOutput = '''
 	extern "C" __global__ void kernel_Sepconv_updateOutput(
@@ -311,7 +311,7 @@ input_file_path = ''
 output_floder_path = ''
 fps = 0
 target_fps = 0
-moudle_chose = '2'
+moudle_chose = '1'
 padding_chose = '2'
 multiple_chose = '1'
 cut_fps_chose = False
@@ -361,18 +361,21 @@ def cut_fps_entry_only_num(content):
     return True
 
 def input_file_func():
-    global output_floder_path,input_file_path,fps,target_fps,multiple_chose
+    global output_floder_path,input_file_path,fps,target_fps,multiple_chose,output_floder_path
     input_file_path = askopenfilename(title="请选择一个要打开的视频文件",filetypes=[("任何支持格式的视频文件", "*.mp4;*.mkv;*.flv;*.avi;*.mov;*.rmvb")])
     input_file_path_label['text'] = input_file_path
     fps = getFrameRate(input_file_path)
     input_fps_label['text'] = '输入帧率为：'+str(fps)+'fps'
     if multiple_chose == '1':
         target_fps = fps*2
-    elif add_type == '2':
+    elif multiple_chose == '2':
         target_fps = fps*4
     else:
         target_fps = fps*8
     output_fps_label['text'] = '输出帧率为：'+str(target_fps)+'fps'
+    filename_without = '.'.join(os.path.split(input_file_path)[-1].split('.')[:-1])
+    output_floder_path = '/'.join([os.path.split(input_file_path)[0],filename_without])
+    output_floder_path_label['text'] = output_floder_path
 
 def output_floder_func():
     global output_floder_path
@@ -405,6 +408,11 @@ def render_background_func(q,qp,input_file_path,output_floder_path,moudle_chose,
     def start_or_save():
         data = qp.get(block=True)
         return data
+
+    if os.path.exists(output_floder_path):
+        output_floder_path = output_floder_path+'-sepconv-APP'
+    os.makedirs(output_floder_path)
+    
     file_name = '.'.join(os.path.basename(input_file_path).split('.')[:-1])
     original_frames_path = os.path.join(output_floder_path,'original_frames')
     interpolated_frames_path = os.path.join(output_floder_path,'interpolated_frames')
@@ -679,13 +687,13 @@ if __name__ == '__main__':
 
     tkinter.Label(root,text='要使用的模型',width=50,heigh=1,anchor='n').grid(row=5,column=0,sticky='nsew',pady=3,padx=3)
     moudle_chose_combobox = tkinter.ttk.Combobox(root,width=50,heigh=1,state='readonly',values=('l1','lf'))
-    moudle_chose_combobox.current(1)
+    moudle_chose_combobox.current(0)
     moudle_chose_combobox.grid(row=5,column=1,sticky='nsew',pady=3,padx=3)
     moudle_chose_combobox.bind("<<ComboboxSelected>>",moudle_chose_func)
 
     tkinter.Label(root,text='模型的处理方式',width=50,heigh=1,anchor='n').grid(row=6,column=0,sticky='nsew',pady=3,padx=3)
-    padding_chose_combobox = tkinter.ttk.Combobox(root,width=50,heigh=1,state='readonly',values=('paper','improved'))
-    padding_chose_combobox.current(1)
+    padding_chose_combobox = tkinter.ttk.Combobox(root,width=50,heigh=1,state='readonly',values=('improved','paper'))
+    padding_chose_combobox.current(0)
     padding_chose_combobox.grid(row=6,column=1,sticky='nsew',pady=3,padx=3)
     padding_chose_combobox.bind("<<ComboboxSelected>>",padding_chose_func)
 

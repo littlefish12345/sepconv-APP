@@ -6,3 +6,4 @@ network/
 ffmpeg.exe
 ffprobe.exe
 .wget-hsts
+.wgetrc
